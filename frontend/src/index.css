@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+body {
+  font-family: "Pretendard", -apple-system, sans-serif;
+  background-color: #FAFAFA;
+  color: #0F1115;
+}
