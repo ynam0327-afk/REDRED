@@ -1,0 +1,67 @@
+# .yml 파일은 들여쓰기로 계층을 구분하는 YAML 형식 사용
+version: "3.9" # Compose 파일 형식 버전
+
+services: # 실행할 컨테이너 정의
+  postgres: # 컨테이너 명(PostgreSQL)
+    image: postgres:16 # 이미지: 설계도로, image의 경우 이미지를 가져옴
+    environment: # 컨테이너 내부 환경 변수: 설정값 - 초기 DB와 인증정보 설정
+      POSTGRES_USER: redred
+      POSTGRES_PASSWORD: redred_dev_password # 실서비스 배포 전 반드시 변경, .env로 분리 권장
+      POSTGRES_DB: redred
+    ports: # 호스트와 컨테이너 간 포트 연결: 외부 접속 경로 지정
+      - "5432:5432"
+    volumes: # 컨테이너 내부 경로와 호스트경로 or Docker 볼륨을 연결함: 데이터 보존 및 파일 공유
+      - pgdata:/var/lib/postgresql/data
+      - ./shared/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql  # 최초 기동 시 자동 실행
+    healthcheck: # DB 혹은 캐시가 요청을 받을 준비가 됐는지 주기적으로 확인하는 설정
+      test: ["CMD-SHELL", "pg_isready -U redred"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis: # 컨테이너 명(Redis) - 하나의 서비스로 정의한 것같다.
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  collector-service:
+    build: # build는 Dockfile 기반 이미지 만듬
+      context: .
+      dockerfile: collector-service/Dockerfile
+    env_file: .env # env: Compose 파일 자체의 변수 치환/ env_file: 외부 파일에서 컨테이너 내부로 환경 변수를 불러옴
+    depends_on: # 서비스 간 실행 순서 제어 - 내부 앱이 준비될 때까지 기다리는 거랑은 다름
+      redis:
+        condition: service_healthy
+    restart: unless-stopped # 종료 이후 재시작 정책
+
+  ingest-worker:
+    build:
+      context: .
+      dockerfile: ingest-worker/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata: # PostgreSQL 데이터를 컨테이너 삭제 후에도 보존하기 위해 연결하는 설정(14번째 줄)
