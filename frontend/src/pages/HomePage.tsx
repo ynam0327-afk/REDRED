@@ -7,6 +7,7 @@ import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck } from "luc
 import Badge from "../components/Badge";
 import AnalyzeInput from "../components/AnalyzeInput";
 import type { Verdict } from "../types";
+import { analyzeMessage, ApiError } from "../api/smishing";
 
 const ICON_CHIP: Record<Verdict, { bg: string; text: string; icon: React.ReactNode }> = {
   danger: { bg: "bg-danger-bg", text: "text-danger-text", icon: <AlertTriangle size={18} /> },
@@ -24,19 +25,21 @@ export default function HomePage() {
   const dangerCount = recent.filter((m) => m.verdict === "danger").length;
   const safeCount = recent.filter((m) => m.verdict === "safe").length;
 
-  const handleAnalyze = async (text: string) => {
-    setAnalyzeError(null);
-    setAnalyzing(true);
-    try {
-      const { urlRiskScore, textAuthenticityScore, detectedUrls } = computeHeuristicScores(text);
-      const created = await postMessage({
-        received_at: new Date().toISOString(),
-        raw_text: text,
-        detected_urls: detectedUrls.length ? detectedUrls : undefined,
-        url_risk_score: urlRiskScore,
-        text_authenticity_score: textAuthenticityScore,
-        device_id: "web-client",
-      });
+ import { analyzeMessage, ApiError } from "../api/smishing";
+// computeHeuristicScores, postMessage import는 이제 필요 없음 (제거 가능)
+
+const handleAnalyze = async (text: string) => {
+  setAnalyzeError(null);
+  setAnalyzing(true);
+  try {
+    const created = await analyzeMessage(text);   // 백엔드가 URL/지역/스코어 전부 계산
+    navigate(`/detail/${created.message_id}`);
+  } catch (err) {
+    setAnalyzeError(err instanceof ApiError ? err.message : "분석 요청에 실패했습니다. 잠시 후 다시 시도해주세요.");
+  } finally {
+    setAnalyzing(false);
+  }
+};
       navigate(`/detail/${created.message_id}`);
     } catch (err) {
       setAnalyzeError(err instanceof ApiError ? err.message : "분석 요청에 실패했습니다. 잠시 후 다시 시도해주세요.");
