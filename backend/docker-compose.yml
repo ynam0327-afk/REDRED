@@ -58,6 +58,8 @@ services: # 실행할 컨테이너 정의
     env_file: .env
     ports:
       - "8000:8000"
+    volumes:
+      - ./secrets:/secrets:ro # FCM 서비스 계정 키(fcm-service-account.json)를 여기 넣어두면 컨테이너에서 확인함
     depends_on:
       postgres:
         condition: service_healthy

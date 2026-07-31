@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     smishing_threshold_suspicious: float = 0.3
     smishing_threshold_danger: float = 0.6
 
+    # FCM 실시간 푸시.
+    # enable_push_scheduler는 기본 False로 둔다 - notification-service가 여러 환경(백엔드
+    # 로컬 Docker, 팀원 로컬 실행 등)에서 동시에 뜰 수 있는데, 전부 켜두면 같은 이벤트에
+    # 대해 중복 발송될 수 있다. 실제 발송을 담당할 인스턴스 하나에서만 .env로 켤 것.
+    enable_push_scheduler: bool = False
+    fcm_service_account_json_path: str = "/secrets/fcm-service-account.json"
+    push_scan_interval_seconds: int = 60 # 주기 60초
+
     class Config:
         env_file = ".env"
 

@@ -1,5 +1,5 @@
 """
-notification-service 기초 버전.
+notification-service
 
 지금 단계 범위: normalized_events를 조회하는 API + 스미싱 판별 결과(incoming_messages)를
 받아 저장/조회하는 최소 API를 제공한다.
@@ -7,6 +7,7 @@ FCM 발송 로직(사용자 위치 매칭, 큐 소비, 실제 push)은 다음 �
 """
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -14,12 +15,16 @@ from typing import Optional
 import asyncpg
 import json
 import redis.asyncio as redis
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from . import push
 from .config import settings
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,10 +35,28 @@ async def lifespan(app: FastAPI):
     )
     app.state.redis = redis.from_url(settings.redis_url, decode_responses=True)
     app.state.cache_locks: dict[str, asyncio.Lock] = {}  # 캐시 스탬피드 방지용 (아래 get_or_compute_cached 참고)
+
+    scheduler = None
+    if settings.enable_push_scheduler: # 켜져있을때만
+            push.init_firebase()
+            scheduler = AsyncIOScheduler()
+            scheduler.add_job(
+                push.send_pending_notifications,
+                "interval",
+                seconds=settings.push_scan_interval_seconds,
+                args=[app.state.pool],
+            )
+            scheduler.start()
+            logger.info("FCM 발송 스케줄러 시작 (주기=%d초)", settings.push_scan_interval_seconds) # 보통 60초
+    else:
+            logger.info("FCM 발송 스케줄러 비활성화 상태 (이 인스턴스는 발송 안 함)")
+    
     yield
+    
+    if scheduler is not None:
+            scheduler.shutdown()
     await app.state.redis.aclose()
     await app.state.pool.close()
-
 
 app = FastAPI(title="RedRed Notification Service", lifespan=lifespan)
 
@@ -70,14 +93,15 @@ async def get_or_compute_cached(cache_key: str, ttl: int, compute_fn) -> str:
     """
     cache-aside + 스탬피드 방지.
 
-    캐시 TTL이 만료되는 순간 동시 요청이 몰리면(부하테스트에서 확인된 상황), 캐시가
-    비어있으니 전부 DB로 몰려가서 그 순간만 지연시간이 튄다(p50은 좋아져도 max가 오히려
-    나빠지는 이유). 이 함수는 그 순간에도 실제 DB 조회는 딱 1번만 일어나게 하고, 나머지
+    부하테스트 확인 완료 사항::
+    캐시 TTL이 만료되는 순간 동시 요청이 몰리면, 캐시가 비어있으니 전부 DB로 몰려가서 
+    그 순간만 지연시간이 튄다(p50은 좋아져도 max가 오히려 나빠지는 이유).
+    이 함수는 그 순간에도 실제 DB 조회는 딱 1번만 일어나게 하고, 나머지
     요청은 그 결과가 캐시에 채워질 때까지 기다렸다가 재사용하게 한다.
 
     주의: 락을 프로세스 메모리(dict)에 두고 있어서, notification-service를 여러 인스턴스로
-    수평 확장하면 인스턴스별로만 스탬피드가 방지된다 (완전한 분산 락은 아님). 지금 규모에선
-    충분하지만, 나중에 여러 인스턴스로 나눠 띄우게 되면 Redis 기반 분산 락으로 바꿔야 한다.
+    수평 확장하면 인스턴스별로만 스탬피드가 방지된다 (완전한 분산 락은 아님). 
+    나중에 여러 인스턴스로 나눠 띄우게 되면 Redis 기반 분산 락으로 바꿔야 한다.
     """
     cached = await app.state.redis.get(cache_key)
     if cached is not None:
@@ -336,3 +360,30 @@ async def get_message(message_id: int):
         )
 
     return MessageDetailOut(matched_event=matched_event, **{k: v for k, v in d.items() if not k.startswith("ev_")})
+
+# =====================================================================
+# FCM 단말 토큰 등록
+# =====================================================================
+
+class DeviceTokenIn(BaseModel):
+    token: str = Field(..., description="FCM이 앱 설치 단위로 발급하는 토큰")
+    device_id: Optional[str] = Field(None, description="incoming_messages.device_id와 동일 개념 (선택)")
+    platform: Optional[str] = Field(None, description="android / ios / web 등 (선택)")
+
+
+@app.post("/device-tokens")
+async def register_device_token(body: DeviceTokenIn):
+    """앱 실행 시 FCM 토큰을 등록/갱신한다. 같은 토큰이 다시 오면 last_seen_at만 갱신한다."""
+    async with app.state.pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO device_tokens (token, device_id, platform, last_seen_at)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ON CONFLICT (token) DO UPDATE SET
+                device_id = EXCLUDED.device_id,
+                platform = EXCLUDED.platform,
+                last_seen_at = CURRENT_TIMESTAMP
+            """,
+            body.token, body.device_id, body.platform,
+        )
+    return {"status": "ok"}

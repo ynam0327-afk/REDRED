@@ -5,16 +5,16 @@
 --   1. bigdata-119.kr call-receipts     (전국 119 신고접수 현황)
 --   2. bigdata-119.kr fire-incidents    (전국 화재 현황)
 --   3. bigdata-119.kr rescue-incidents  (전국 구조 현황)
---   4. safetydata.go.kr DSSP-IF-00247   (행정안전부 긴급재난문자) <- 실제 검증된 "실시간" 소스
+--   4. safetydata.go.kr DSSP-IF-00247   (행정안전부 긴급재난문자)
 --
--- 설계 원칙 (지금까지의 대화에서 확정된 결정사항):
+-- 설계 원칙 :
 --   - raw_* 테이블은 원본 응답 구조를 보존한다 (스펙 변경 시 재처리 가능하도록)
 --   - normalized_events 하나만 알림 서비스가 조회한다 (소스별 위치 정밀도 차이를 흡수)
 --   - 화재는 좌표가 없어 SIGUNGU 정밀도가 상한이다
 --   - 긴급재난문자는 하나의 원본이 여러 지역에 걸칠 수 있어 지역별로 fan-out 하여 저장한다
 --     -> 따라서 normalized_events는 (incident_type, source_pk) 유니크가 아니라
 --        event_id 자체가 전역 유일키다
---   - 구급(구급현황) 데이터는 의도적으로 포함하지 않는다 (개인 의료정보 성격, 알림 실익 낮음 -> 별도 결정사항)
+--   - 구급(구급현황) 데이터는 의도적으로 포함하지 않는다 (개인 의료정보 성격, 알림 실익 낮음)
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -24,7 +24,7 @@
 CREATE TABLE raw_call_receipts (
     dclr_rcpt_no          VARCHAR(20)  PRIMARY KEY,
 
-    dclr_dt               VARCHAR(14),                    -- 신고일시
+    dclr_dt               VARCHAR(14), -- 신고일시
     rcpt_end_dt            VARCHAR(14),
     dspt_drtv_dt           VARCHAR(14),
     grnds_arvl_dt          VARCHAR(14),
@@ -41,7 +41,7 @@ CREATE TABLE raw_call_receipts (
     disaster_ctpv_nm       VARCHAR(20),
     disaster_sgg_nm        VARCHAR(20),
     disaster_emd_nm        VARCHAR(20),
-    disaster_lon           NUMERIC(13,10),                 -- 결측 비율 매우 높음(관측상 약 80%)
+    disaster_lon           NUMERIC(13,10), -- 결측 비율 매우 높음(관측상 약 80%)
     disaster_lat           NUMERIC(12,10),
 
     frstn_nm                VARCHAR(200),
@@ -73,7 +73,7 @@ CREATE TABLE raw_fire_incidents (
     fire_supesn_hr            NUMERIC(7,0),
 
     ctpv_nm                 VARCHAR(40),
-    sgg_nm                  VARCHAR(40),                    -- 좌표 없음: 위치 정밀도 상한
+    sgg_nm                  VARCHAR(40), -- 좌표 없음: 위치 정밀도 상한
     frstn_grnds_dstnc         NUMERIC(10,3),
     cntr_grnds_dstnc          NUMERIC(8,3),
 
@@ -147,12 +147,12 @@ CREATE INDEX idx_rri_dclr ON raw_rescue_incidents (dclr_ymd, dclr_tm);
 CREATE TABLE raw_official_alerts (
     sn                       BIGINT       PRIMARY KEY,           -- SN
 
-    crt_dt                   VARCHAR(20)  NOT NULL,               -- 'YYYY/MM/DD HH:MM:SS'
-    msg_cn                   VARCHAR(4000) NOT NULL,               -- 재난문자 본문
-    rcptn_rgn_nm               VARCHAR(4000) NOT NULL,               -- 콤마 구분 지역 원문 (정규화는 normalized_events에서)
-    emrg_step_nm               VARCHAR(100),                        -- 안전안내 / 주의 / 경계 / 심각
-    dst_se_nm                 VARCHAR(100),                        -- 재해구분 (폭염/호우/기타 등)
-    agency                   VARCHAR(100),                        -- 발신기관명. API 필드 아님 - msg_cn 끝의 [기관명] 표기를 정규식으로 추출 (shared/models.py의 extract_agency_from_msg)
+    crt_dt                   VARCHAR(20)  NOT NULL, -- 'YYYY/MM/DD HH:MM:SS'
+    msg_cn                   VARCHAR(4000) NOT NULL, -- 재난문자 본문
+    rcptn_rgn_nm               VARCHAR(4000) NOT NULL, -- 콤마 구분 지역 원문 (정규화는 normalized_events에서)
+    emrg_step_nm               VARCHAR(100), -- 안전안내 / 주의 / 경계 / 심각
+    dst_se_nm                 VARCHAR(100), -- 재해구분 (폭염/호우/기타 등)
+    agency                   VARCHAR(100), -- 발신기관명. API 필드 아님 - msg_cn 끝의 [기관명] 표기를 정규식으로 추출 (shared/models.py의 extract_agency_from_msg)
 
     reg_ymd                   VARCHAR(50),
     mdfcn_ymd                 VARCHAR(50),
@@ -196,7 +196,7 @@ CREATE TABLE normalized_events (
     --   'OFFICIAL_ALERT:261240:0'   (SN:지역인덱스, fan-out 결과)
 
     incident_type             incident_type_enum NOT NULL,
-    source_pk                 VARCHAR(25)  NOT NULL,           -- raw_* 테이블 조인용 (유일하지 않을 수 있음)
+    source_pk                 VARCHAR(25)  NOT NULL, -- raw_* 테이블 조인용 (유일하지 않을 수 있음)
 
     occurred_at                TIMESTAMP    NOT NULL,
 
@@ -208,7 +208,7 @@ CREATE TABLE normalized_events (
     location_precision          location_precision_enum NOT NULL,
 
     summary_title              VARCHAR(200),
-    severity_hint               VARCHAR(20),                     -- NORMAL / CAUTION / WARNING / CRITICAL / CASUALTY
+    severity_hint               VARCHAR(20), -- NORMAL / CAUTION / WARNING / CRITICAL / CASUALTY
 
     is_notified                BOOLEAN      DEFAULT FALSE,
     created_at                 TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
@@ -235,28 +235,28 @@ CREATE INDEX idx_ne_occurred_at ON normalized_events (occurred_at DESC);
 -- 있으면 채워진다 (없으면 NULL -> 공식 DB에 없는, 즉 더 의심스러운 문자).
 --
 -- url_risk_score / text_authenticity_score의 가중치·임계값은 초기값이며,
--- 팀원 모델 성능이 나오는 대로 재조정 예정 (지금은 자리만 잡아둔 것).
+-- 팀원 모델 성능이 나오는 대로 재조정 예정.
 -- =====================================================================
 CREATE TYPE smishing_verdict_enum AS ENUM ('AUTHENTIC', 'SUSPICIOUS', 'SMISHING');
 
 CREATE TABLE incoming_messages (
     message_id                 BIGSERIAL PRIMARY KEY,
 
-    received_at                 TIMESTAMP    NOT NULL,               -- 사용자 단말이 문자를 수신한 시각(클라이언트 제공)
-    raw_text                    VARCHAR(4000) NOT NULL,               -- 수신 문자 원문
+    received_at                 TIMESTAMP    NOT NULL, -- 사용자 단말이 문자를 수신한 시각(클라이언트 제공)
+    raw_text                    VARCHAR(4000) NOT NULL, -- 수신 문자 원문
 
-    detected_urls                JSONB,                                -- 팀원 URL 추출 모델 결과 (문자열 배열)
-    url_risk_score                NUMERIC(4,3),                         -- 0~1, 팀원 악성 URL 모델 출력
-    text_authenticity_score        NUMERIC(4,3),                         -- 0~1, 팀원 재난문자 분류 모델 출력 (공식 문체/패턴과의 유사도, 높을수록 진짜에 가까움)
+    detected_urls                JSONB, -- 팀원 URL 추출 모델 결과 (문자열 배열)
+    url_risk_score                NUMERIC(4,3), -- 0~1, 팀원 악성 URL 모델 출력
+    text_authenticity_score        NUMERIC(4,3), -- 0~1, 팀원 재난문자 분류 모델 출력 (공식 문체/패턴과의 유사도, 높을수록 진짜에 가까움)
 
-    matched_sido_nm               VARCHAR(40),                          -- 문자 본문에서 추출된 지역 (팀원 파싱 결과)
+    matched_sido_nm               VARCHAR(40), -- 문자 본문에서 추출된 지역 (팀원 파싱 결과)
     matched_sigungu_nm             VARCHAR(40),
     matched_event_id              VARCHAR(50) REFERENCES normalized_events(event_id),  -- 공식 DB 매칭 사건 (없으면 NULL)
 
-    smishing_score                NUMERIC(4,3) NOT NULL,                -- 최종 가중합 스코어 (0~1, 높을수록 위험)
+    smishing_score                NUMERIC(4,3) NOT NULL, -- 최종 가중합 스코어 (0~1, 높을수록 위험)
     verdict                      smishing_verdict_enum NOT NULL,
 
-    device_id                    VARCHAR(100),                          -- 클라이언트(단말) 식별용, 선택
+    device_id                    VARCHAR(100), -- 클라이언트(단말) 식별용, 선택
     created_at                    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -264,3 +264,20 @@ CREATE INDEX idx_im_created_at ON incoming_messages (created_at DESC);
 CREATE INDEX idx_im_verdict ON incoming_messages (verdict);
 CREATE INDEX idx_im_matched_event ON incoming_messages (matched_event_id);
 CREATE INDEX idx_im_device ON incoming_messages (device_id);
+
+-- =====================================================================
+-- 7. DEVICE_TOKENS: FCM 푸시 발송 대상 단말 토큰
+--
+-- 지금은 MVP라 지역 구독 없이 등록된 토큰 전체에 브로드캐스트한다.
+-- 나중에 "내 동네만 받기"를 만들게 되면 subscribed_sido_nm 같은 컬럼을
+-- 추가하고 발송 로직에서 필터링하면 된다 (지금은 컬럼 자체가 없음).
+-- =====================================================================
+CREATE TABLE device_tokens (
+    token           VARCHAR(255) PRIMARY KEY, -- FCM이 단말/앱 설치 단위로 발급하는 토큰
+    device_id       VARCHAR(100), -- incoming_messages.device_id와 동일 개념(선택, 연결용)
+    platform        VARCHAR(20), -- android / ios / web 등 (선택)
+    registered_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_dt_device_id ON device_tokens (device_id);
