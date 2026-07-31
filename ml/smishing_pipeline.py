@@ -35,7 +35,8 @@ def extract_first_url(raw_text: str) -> str | None:
 # 모듈 로드 시 딱 한 번만 실행 - 무거운 것들을 여기서 메모리에 올려둔다
 # ---------------------------------------------------------------------------
 
-DATA_DIR = "/content/drive/MyDrive/REDRED"
+import os
+DATA_DIR = os.environ.get("ML_DATA_DIR", "/content/drive/MyDrive/REDRED")
 
 _RF_MODEL = load_url_model(f"{DATA_DIR}/rf_url_model.joblib")
 
