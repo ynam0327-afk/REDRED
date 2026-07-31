@@ -2,15 +2,12 @@ import { useState, useEffect } from "react";
 import type { Message } from "../types";
 import { getMessages } from "../api/smishing";
 import { adaptMessage } from "../utils/adapt";
-
 export function useMessages() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
@@ -23,13 +20,11 @@ export function useMessages() {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
     return () => {
       cancelled = true;
     };
   }, []);
-
   // 로컬에서 임시로 추가/신고/삭제하는 기능은 그대로 유지 (POST 연동 전까지)
   const addMessage = (newMessage: Message) => {
     setMessages((prev) => [newMessage, ...prev]);
@@ -40,6 +35,5 @@ export function useMessages() {
   const deleteMessage = (id: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== id));
   };
-
   return { messages, loading, error, addMessage, reportMessage, deleteMessage };
 }
