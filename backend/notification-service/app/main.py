@@ -5,6 +5,11 @@ notification-service
 받아 저장/조회하는 최소 API를 제공한다.
 FCM 발송 로직(사용자 위치 매칭, 큐 소비, 실제 push)은 다음 단계에서 추가한다.
 """
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml"))
+from smishing_pipeline import process_message
 
 import asyncio
 import logging
@@ -238,7 +243,35 @@ def compute_smishing_score(url_risk_score: float, text_authenticity_score: float
 
     return round(score, 3), verdict
 
+class AnalyzeRequest(BaseModel):
+    raw_text: str = Field(..., max_length=4000)
+    device_id: Optional[str] = None
 
+
+@app.post("/analyze", response_model=MessageOut)
+async def analyze_message(req: AnalyzeRequest):
+    """
+    사용자가 문자를 붙여넣었을 때 호출되는 엔드포인트.
+    raw_text 하나로 url_risk_score/text_authenticity_score까지 계산한 뒤,
+    기존 create_message() 로직(compute_smishing_score + DB 저장)을 그대로 재사용한다.
+    """
+    scores = process_message(
+        raw_text=req.raw_text,
+        sms_date=datetime.now().date().isoformat(),
+        official_service_key=os.environ.get("SAFETYDATA_SERVICE_KEY"),
+    )
+
+    body = MessageScoreIn(
+        received_at=datetime.now(),
+        raw_text=req.raw_text,
+        detected_urls=[scores["detail"]["url_used"]] if scores["detail"]["url_used"] else None,
+        url_risk_score=scores["url_risk_score"],
+        text_authenticity_score=scores["text_authenticity_score"],
+        device_id=req.device_id,
+    )
+
+    return await create_message(body)
+    
 @app.post("/messages", response_model=MessageOut)
 async def create_message(body: MessageScoreIn):
     """수신 문자 1건 + 컴포넌트 스코어를 받아 최종 smishing_score/verdict를 계산해 저장한다."""
