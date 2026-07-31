@@ -91,3 +91,18 @@ export async function reportMessage(messageId: string): Promise<void> {
   });
   return handleResponse<void>(res);
 }
+
+export interface AnalyzeRequestPayload {
+  raw_text: string;
+  detected_urls?: string[];
+  device_id?: string;
+}
+
+export async function analyzeMessage(payload: AnalyzeRequestPayload): Promise<ApiMessage> {
+  const res = await fetch(`${BASE_URL}/analyze`, {
+    method: "POST",
+    headers: { ...defaultHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<ApiMessage>(res);
+}
