@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMessages } from "../hooks/useMessages";
-import { computeHeuristicScores } from "../utils/analyze";
-import { postMessage, ApiError } from "../api/smishing";
 import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck } from "lucide-react";
 import Badge from "../components/Badge";
 import AnalyzeInput from "../components/AnalyzeInput";
