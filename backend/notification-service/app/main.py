@@ -255,7 +255,8 @@ async def analyze_message(req: AnalyzeRequest):
     raw_text 하나로 url_risk_score/text_authenticity_score까지 계산한 뒤,
     기존 create_message() 로직(compute_smishing_score + DB 저장)을 그대로 재사용한다.
     """
-    scores = process_message(
+    scores = await asyncio.to_thread(
+        process_message,
         raw_text=req.raw_text,
         sms_date=datetime.now().date().isoformat(),
         official_service_key=os.environ.get("SAFETYDATA_SERVICE_KEY"),
