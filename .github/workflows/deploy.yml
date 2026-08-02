@@ -21,10 +21,10 @@ jobs:
       # ML 코드 전송
       - name: Transfer ML files to EC2
         run: |
-          scp -o StrictHostKeyChecking=no \
-          -i mocac.pem \
-          -r ml/* \
-          ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/REDRED-main/ml/
+         scp -o StrictHostKeyChecking=no \
+         -i mocac.pem \
+         -r ml/* \
+         ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/ml/
 
       # notification-service 재시작
       - name: Restart backend on EC2
