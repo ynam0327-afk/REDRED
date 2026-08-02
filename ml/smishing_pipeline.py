@@ -19,7 +19,6 @@ from region_extractor import extract_region_from_text
 # ============================================================
 # URL 전처리
 # ============================================================
-
 def normalize_text_for_url(text: str) -> str:
     """
     스미싱 우회 패턴 정규화
@@ -53,23 +52,16 @@ def normalize_text_for_url(text: str) -> str:
 # ============================================================
 
 URL_PATTERN = re.compile(
-    r"""
-    (?:
-        https?://
-    )?
-    (?:
-        (?:\d{1,3}\.){3}\d{1,3}
-        |
-        (?:[a-zA-Z0-9]
-            (?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?
-            \.
-        )+
-        [a-zA-Z]{2,}
-    )
-    (?:
-        /)〈〉『』]*?
-    """,
-    re.VERBOSE | re.IGNORECASE,
+    r'(?:https?://)?'
+    r'(?:'
+        r'(?:\d{1,3}\.){3}\d{1,3}'
+        r'|'
+        r'(?:[a-zA-Z0-9]'
+        r'(?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+'
+        r'[a-zA-Z]{2,}'
+    r')'
+    r'(?:/[^\s]*)?',
+    re.IGNORECASE
 )
 
 
