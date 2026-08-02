@@ -84,6 +84,23 @@ export async function deleteMessage(messageId: string): Promise<void> {
   return handleResponse<void>(res);
 }
 
+export async function bulkDeleteMessages(messageIds: string[]): Promise<{ deleted_count: number }> {
+  const res = await fetch(`${BASE_URL}/messages/bulk-delete`, {
+    method: "POST",
+    headers: { ...defaultHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify({ message_ids: messageIds.map((id) => Number(id)) }),
+  });
+  return handleResponse(res);
+}
+
+export async function deleteAllMessages(): Promise<{ deleted_count: number }> {
+  const res = await fetch(`${BASE_URL}/messages`, {
+    method: "DELETE",
+    headers: defaultHeaders,
+  });
+  return handleResponse(res);
+}
+
 export async function reportMessage(messageId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/messages/${messageId}/report`, {
     method: "PATCH",
@@ -97,8 +114,6 @@ export interface AnalyzeRequestPayload {
   detected_urls?: string[];
   device_id?: string;
 }
-
-
 
 export async function analyzeMessage(payload: { raw_text: string; device_id?: string }): Promise<ApiMessage> {
   const res = await fetch(`${BASE_URL}/analyze`, {
