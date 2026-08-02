@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMessages } from "../hooks/useMessages";
-import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck } from "lucide-react";
+import { analyzeMessage, ApiError } from "../api/smishing";
+import { adaptMessage } from "../utils/adapt";
+import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck, Ban } from "lucide-react";
 import Badge from "../components/Badge";
 import AnalyzeInput from "../components/AnalyzeInput";
 import type { Verdict } from "../types";
-import { analyzeMessage, ApiError } from "../api/smishing";
 
 const ICON_CHIP: Record<Verdict, { bg: string; text: string; icon: React.ReactNode }> = {
   danger: { bg: "bg-danger-bg", text: "text-danger-text", icon: <AlertTriangle size={18} /> },
   neutral: { bg: "bg-neutral-bg", text: "text-neutral-text", icon: <HelpCircle size={18} /> },
   safe: { bg: "bg-safe-bg", text: "text-safe-text", icon: <BadgeCheck size={18} /> },
+  not_disaster: { bg: "bg-notice-bg", text: "text-notice-text", icon: <Ban size={18} /> },
 };
 
 export default function HomePage() {
@@ -18,27 +20,20 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
   const DAY_MS = 24 * 60 * 60 * 1000;
   const recent = messages.filter((m) => Date.now() - new Date(m.receivedAtISO).getTime() <= DAY_MS);
   const dangerCount = recent.filter((m) => m.verdict === "danger").length;
   const safeCount = recent.filter((m) => m.verdict === "safe").length;
 
- import { analyzeMessage, ApiError } from "../api/smishing";
-// computeHeuristicScores, postMessage import는 이제 필요 없음 (제거 가능)
-
-const handleAnalyze = async (text: string) => {
-  setAnalyzeError(null);
-  setAnalyzing(true);
-  try {
-    const created = await analyzeMessage(text);   // 백엔드가 URL/지역/스코어 전부 계산
-    navigate(`/detail/${created.message_id}`);
-  } catch (err) {
-    setAnalyzeError(err instanceof ApiError ? err.message : "분석 요청에 실패했습니다. 잠시 후 다시 시도해주세요.");
-  } finally {
-    setAnalyzing(false);
-  }
-};
-      navigate(`/detail/${created.message_id}`);
+  const handleAnalyze = async (text: string) => {
+    setAnalyzeError(null);
+    setAnalyzing(true);
+    try {
+      const created = await analyzeMessage({ raw_text: text, device_id: "web-client" });
+      // 서버가 GET /messages(/{id})를 최대 10초까지 캐싱하므로, 방금 만든 결과를 바로 재조회하면
+      // 아직 반영이 안 돼 404가 뜰 수 있음. POST/analyze 응답값을 state로 넘겨서 바로 화면에 씀.
+      navigate(`/detail/${created.message_id}`, { state: { initialMessage: adaptMessage(created) } });
     } catch (err) {
       setAnalyzeError(err instanceof ApiError ? err.message : "분석 요청에 실패했습니다. 잠시 후 다시 시도해주세요.");
     } finally {

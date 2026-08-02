@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { CheckCircle2, Trash2 } from "lucide-react";
 import { getMessageDetail, deleteMessage, reportMessage, ApiError } from "../api/smishing";
 import { adaptMessage } from "../utils/adapt";
@@ -11,8 +11,12 @@ import Modal from "../components/Modal";
 export default function DetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [message, setMessage] = useState<Message | null>(null);
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  // 홈에서 방금 분석 직후 넘어온 경우, POST 응답을 바로 씀 (서버 캐싱 최대 10초라 재조회가 아직 안 될 수 있음)
+  const initialMessage = (location.state as { initialMessage?: Message } | null)?.initialMessage ?? null;
+
+  const [message, setMessage] = useState<Message | null>(initialMessage);
+  const [loading, setLoading] = useState(!initialMessage);
   const [error, setError] = useState<string | null>(null);
 
   const [reported, setReported] = useState(false);
@@ -28,15 +32,19 @@ export default function DetailPage() {
     if (!id) return;
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      if (!initialMessage) setLoading(true);
       setError(null);
       try {
         const raw = await getMessageDetail(id!);
         if (!cancelled) setMessage(adaptMessage(raw));
       } catch (err) {
         if (!cancelled) {
-          const msg = err instanceof ApiError ? err.message : "데이터를 불러오지 못했습니다.";
-          setError(msg);
+          // 방금 분석해서 넘어온 화면이면, 서버 캐싱(최대 10초)으로 재조회가 잠깐 실패할 수 있으니
+          // 이미 보여줄 데이터(initialMessage)가 있으면 에러로 덮어쓰지 않음
+          if (!initialMessage) {
+            const msg = err instanceof ApiError ? err.message : "데이터를 불러오지 못했습니다.";
+            setError(msg);
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
