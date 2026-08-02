@@ -239,31 +239,72 @@ class MessageDetailOut(MessageOut):
     matched_event: Optional[EventBrief] = None
 
 
-def compute_smishing_score(url_risk_score: float, text_authenticity_score: float,
-                            is_disaster_message: Optional[bool] = True) -> tuple[float, str]:
-    """
-    규칙 기반 가중합. text_authenticity_score는 "공식 문자와 얼마나 비슷한가"이므로
-    위험도 방향으로 뒤집어서((1 - text_authenticity_score)) url_risk_score와 합산한다.
+import re
 
-    is_disaster_message=False(재난문자 형식/어휘 자체가 전혀 없는 일반 문자)인 경우에는
-    text_authenticity_score가 의미 없는 값이므로 가중합에 반영하지 않는다. 대신 URL 위험도만으로
-    판단해서, URL이 실제로 위험하면 그래도 SMISHING으로 잡고, 아니면 별도의 NOT_DISASTER로 분리한다.
-    """
-    if is_disaster_message is False:
-        score = max(0.0, min(1.0, url_risk_score))
-        verdict = "SMISHING" if score >= settings.smishing_threshold_danger else "NOT_DISASTER"
-        return round(score, 3), verdict
+
+def contains_ip_url(urls: list[str] | None) -> bool:
+    if not urls:
+        return False
+
+    ip_pattern = re.compile(
+        r"(?:\d{1,3}\.){3}\d{1,3}"
+    )
+
+    return any(
+        ip_pattern.search(url)
+        for url in urls
+    )
+
+
+def compute_smishing_score(
+    url_risk_score: float,
+    text_authenticity_score: float,
+    detected_urls: list[str] | None = None,
+) -> tuple[float, str]:
+
+    # ====================================================
+    # Rule 1
+    # IP URL 발견 시 즉시 스미싱
+    # ====================================================
+
+    if contains_ip_url(detected_urls):
+        return 1.0, "SMISHING"
+
+    # ====================================================
+    # Rule 2
+    # URL 위험도가 매우 높으면 즉시 스미싱
+    # ====================================================
+
+    if url_risk_score >= 0.8:
+        return 1.0, "SMISHING"
+
+    # ====================================================
+    # Rule 3
+    # URL 비중을 높인 가중합
+    # 기존 0.5 / 0.5
+    # 변경 0.7 / 0.3
+    # ====================================================
 
     score = (
-        settings.smishing_weight_url * url_risk_score
-        + settings.smishing_weight_text * (1 - text_authenticity_score)
+        0.7 * url_risk_score
+        + 0.3 * (1 - text_authenticity_score)
     )
-    score = max(0.0, min(1.0, score))
 
-    if score >= settings.smishing_threshold_danger:
+    score = max(
+        0.0,
+        min(1.0, score)
+    )
+
+    # ====================================================
+    # Threshold
+    # ====================================================
+
+    if score >= 0.7:
         verdict = "SMISHING"
-    elif score >= settings.smishing_threshold_suspicious:
+
+    elif score >= 0.3:
         verdict = "SUSPICIOUS"
+
     else:
         verdict = "AUTHENTIC"
 
@@ -304,9 +345,11 @@ async def analyze_message(req: AnalyzeRequest):
 @app.post("/messages", response_model=MessageOut)
 async def create_message(body: MessageScoreIn):
     """수신 문자 1건 + 컴포넌트 스코어를 받아 최종 smishing_score/verdict를 계산해 저장한다."""
-    smishing_score, verdict = compute_smishing_score(
-        body.url_risk_score, body.text_authenticity_score, body.is_disaster_message,
-    )
+  smishing_score, verdict = compute_smishing_score(
+    body.url_risk_score,
+    body.text_authenticity_score,
+    body.detected_urls
+)
 
     received_at = body.received_at.replace(tzinfo=None) if body.received_at.tzinfo else body.received_at
 
