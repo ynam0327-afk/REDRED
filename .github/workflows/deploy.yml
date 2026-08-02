@@ -33,8 +33,8 @@ jobs:
           -i mocac.pem \
           ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
 
-            cd /home/ec2-user/REDRED-main/backend
+            cd /home/ec2-user/REDRED-backend
 
-            docker compose restart notification-service
+            docker-compose restart notification-service
 
           ENDSSH
