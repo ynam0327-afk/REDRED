@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMessages } from "../hooks/useMessages";
-import { analyzeMessage, ApiError } from "../api/smishing";
-import { adaptMessage } from "../utils/adapt";
-import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck, Ban } from "lucide-react";
+import { analyzeMessage, bulkDeleteMessages, deleteAllMessages, ApiError } from "../api/smishing";
+import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck, Ban, Trash2, X } from "lucide-react";
 import Badge from "../components/Badge";
 import AnalyzeInput from "../components/AnalyzeInput";
 import type { Verdict } from "../types";
@@ -16,10 +15,15 @@ const ICON_CHIP: Record<Verdict, { bg: string; text: string; icon: React.ReactNo
 };
 
 export default function HomePage() {
-  const { messages, loading, error } = useMessages();
+  const { messages, loading, error, removeMessages, clearAllMessages } = useMessages();
   const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const DAY_MS = 24 * 60 * 60 * 1000;
   const recent = messages.filter((m) => Date.now() - new Date(m.receivedAtISO).getTime() <= DAY_MS);
@@ -31,13 +35,63 @@ export default function HomePage() {
     setAnalyzing(true);
     try {
       const created = await analyzeMessage({ raw_text: text, device_id: "web-client" });
-      // 서버가 GET /messages(/{id})를 최대 10초까지 캐싱하므로, 방금 만든 결과를 바로 재조회하면
-      // 아직 반영이 안 돼 404가 뜰 수 있음. POST/analyze 응답값을 state로 넘겨서 바로 화면에 씀.
-      navigate(`/detail/${created.message_id}`, { state: { initialMessage: adaptMessage(created) } });
+      navigate(`/detail/${created.message_id}`);
     } catch (err) {
       setAnalyzeError(err instanceof ApiError ? err.message : "분석 요청에 실패했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const toggleSelectMode = () => {
+    setSelectMode((prev) => !prev);
+    setSelectedIds(new Set());
+    setDeleteError(null);
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`선택한 ${selectedIds.size}건을 삭제할까요?`)) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const ids = Array.from(selectedIds);
+      await bulkDeleteMessages(ids);
+      removeMessages(ids);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "삭제에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (messages.length === 0) return;
+    if (!window.confirm(`탐지 이력 전체(${messages.length}건)를 삭제할까요? 되돌릴 수 없습니다.`)) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAllMessages();
+      clearAllMessages();
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "삭제에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -86,15 +140,74 @@ export default function HomePage() {
         </div>
       </div>
 
+      {messages.length > 0 && (
+        <div className="flex items-center justify-between mb-2 px-1">
+          <p className="text-sm font-medium text-muted">탐지 이력 {messages.length}건</p>
+          {!selectMode ? (
+            <button
+              onClick={toggleSelectMode}
+              className="text-sm font-medium text-brand flex items-center gap-1"
+            >
+              <Trash2 size={14} /> 삭제 관리
+            </button>
+          ) : (
+            <button
+              onClick={toggleSelectMode}
+              className="text-sm font-medium text-muted flex items-center gap-1"
+            >
+              <X size={14} /> 취소
+            </button>
+          )}
+        </div>
+      )}
+
+      {selectMode && (
+        <div className="flex items-center justify-between gap-2 mb-3 bg-white rounded-2xl p-3 shadow-[0_6px_16px_rgba(15,17,21,0.06)]">
+          <span className="text-sm text-muted">{selectedIds.size}건 선택됨</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0 || deleting}
+              className="px-3 py-1.5 rounded-lg bg-danger-bg text-danger-text text-sm font-medium disabled:opacity-40"
+            >
+              선택 삭제
+            </button>
+            <button
+              onClick={handleDeleteAll}
+              disabled={deleting}
+              className="px-3 py-1.5 rounded-lg bg-danger text-white text-sm font-medium disabled:opacity-40"
+            >
+              전체 삭제
+            </button>
+          </div>
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="bg-danger-bg text-danger-text rounded-2xl p-3.5 mb-3 text-sm text-center">
+          {deleteError}
+        </div>
+      )}
+
       <div className="space-y-2.5">
         {messages.map((m) => {
           const chip = ICON_CHIP[m.verdict];
+          const checked = selectedIds.has(m.id);
           return (
             <div
               key={m.id}
-              onClick={() => navigate(`/detail/${m.id}`)}
+              onClick={() => (selectMode ? toggleSelected(m.id) : navigate(`/detail/${m.id}`))}
               className="bg-white rounded-2xl p-3.5 shadow-[0_6px_16px_rgba(15,17,21,0.06)] flex items-center gap-3 cursor-pointer active:scale-[0.98] transition"
             >
+              {selectMode && (
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleSelected(m.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-5 h-5 shrink-0 accent-brand"
+                />
+              )}
               <div className={`w-10 h-10 rounded-xl ${chip.bg} ${chip.text} flex items-center justify-center shrink-0`}>
                 {chip.icon}
               </div>
