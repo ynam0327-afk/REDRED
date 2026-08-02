@@ -98,7 +98,9 @@ export interface AnalyzeRequestPayload {
   device_id?: string;
 }
 
-export async function analyzeMessage(payload: AnalyzeRequestPayload): Promise<ApiMessage> {
+
+
+export async function analyzeMessage(payload: { raw_text: string; device_id?: string }): Promise<ApiMessage> {
   const res = await fetch(`${BASE_URL}/analyze`, {
     method: "POST",
     headers: { ...defaultHeaders, "Content-Type": "application/json" },
