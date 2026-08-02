@@ -21,7 +21,7 @@ def combined_disaster_reliability(fire_db: Optional[SourceMatch],
                                    call119: Optional[SourceMatch],
                                    message: Optional[str] = None,
                                    official_match_score: Optional[float] = None) -> dict:
-   
+
     if official_match_score is not None:
         return {
             "score": official_match_score,
@@ -34,6 +34,13 @@ def combined_disaster_reliability(fire_db: Optional[SourceMatch],
     if not available:
         if message:
             content = content_authenticity_score(message)
+            if content.get("is_disaster_format") is False:
+                return {
+                    "score": None,
+                    "matched_sources": [],
+                    "note": content["note"],
+                    "is_disaster_format": False,
+                }
             return {
                 "score": content["score"],
                 "matched_sources": [],
@@ -51,6 +58,13 @@ def combined_disaster_reliability(fire_db: Optional[SourceMatch],
     if not fire_matched and not call119_matched:
         if message:
             content = content_authenticity_score(message)
+            if content.get("is_disaster_format") is False:
+                return {
+                    "score": None,
+                    "matched_sources": [],
+                    "note": content["note"],
+                    "is_disaster_format": False,
+                }
             return {
                 "score": content["score"],
                 "matched_sources": [],
@@ -88,7 +102,7 @@ def combined_disaster_reliability(fire_db: Optional[SourceMatch],
 # ---------------------------------------------------------------------------
 
 def url_cross_check(is_whitelisted: bool, rf_score: float) -> dict:
-    
+
     if is_whitelisted:
         return {"risk": 0.0, "reason": "화이트리스트 매칭 - 공식 도메인"}
 
@@ -126,7 +140,7 @@ def final_alert_score_v2(fire_db: Optional[SourceMatch], call119: Optional[Sourc
 
 
 # ---------------------------------------------------------------------------
-# 검증 - 확장 시나리오
+# 검증 - 확장 시나리오 (실제 서비스 흐름과 무관한 디버깅용 - 안 건드림)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     scenarios = [
