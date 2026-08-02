@@ -1,5 +1,14 @@
+"""
+notification-service
+
+지금 단계 범위: normalized_events를 조회하는 API + 스미싱 판별 결과(incoming_messages)를
+받아 저장/조회하는 최소 API를 제공한다.
+FCM 발송 로직(사용자 위치 매칭, 큐 소비, 실제 push)은 다음 단계에서 추가한다.
+"""
 import os
+import re
 import sys
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml"))
 from smishing_pipeline import process_message
 
@@ -32,7 +41,10 @@ async def lifespan(app: FastAPI):
         max_size=15,
     )
     app.state.redis = redis.from_url(settings.redis_url, decode_responses=True)
-    app.state.cache_locks: dict[str, asyncio.Lock] = {}
+
+    # cache_key가 필터 조합마다 다 달라서 계속 늘어나기만 하면 안 되니,
+    # 고정된 개수(64개)의 버킷에 해시로 분산해 재사용한다 (무한정 커지는 딕셔너리 방지).
+    app.state.cache_locks: list[asyncio.Lock] = [asyncio.Lock() for _ in range(64)]
 
     scheduler = None
     if settings.enable_push_scheduler:
@@ -97,7 +109,7 @@ async def get_or_compute_cached(cache_key: str, ttl: int, compute_fn) -> str:
     if cached is not None:
         return cached
 
-    lock = app.state.cache_locks.setdefault(cache_key, asyncio.Lock())
+    lock = app.state.cache_locks[hash(cache_key) % len(app.state.cache_locks)]
     async with lock:
         cached = await app.state.redis.get(cache_key)
         if cached is not None:
@@ -231,72 +243,52 @@ class MessageDetailOut(MessageOut):
     matched_event: Optional[EventBrief] = None
 
 
-import re
-
-
 def contains_ip_url(urls: list[str] | None) -> bool:
+    """detected_urls 중 IP 주소 형태(도메인 없이 숫자.숫자.숫자.숫자)가 하나라도 있는지."""
     if not urls:
         return False
 
-    ip_pattern = re.compile(
-        r"(?:\d{1,3}\.){3}\d{1,3}"
-    )
-
-    return any(
-        ip_pattern.search(url)
-        for url in urls
-    )
+    ip_pattern = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
+    return any(ip_pattern.search(url) for url in urls)
 
 
 def compute_smishing_score(
     url_risk_score: float,
     text_authenticity_score: float,
     detected_urls: list[str] | None = None,
+    is_disaster_message: Optional[bool] = True,
 ) -> tuple[float, str]:
+    """
+    Rule 1: detected_urls에 IP 주소 URL이 있으면 즉시 SMISHING (도메인 없이 IP로 직접
+            접속을 유도하는 링크는 정상적인 공식 문자에선 나올 이유가 없음)
+    Rule 2: url_risk_score가 0.8 이상이면 즉시 SMISHING
+    Rule 3: 그 외엔 가중합 (URL 비중 0.7 / 텍스트 비중 0.3)
 
-    # ====================================================
-    # Rule 1
-    # IP URL 발견 시 즉시 스미싱
-    # ====================================================
-
+    is_disaster_message=False (재난문자 형식/어휘 자체가 전혀 없는 일반 문자)인 경우엔
+    text_authenticity_score가 의미 없는 값이므로 가중합에 반영하지 않는다. 대신 URL 관련
+    규칙(IP URL, 고위험 URL)은 재난 여부와 무관하게 그대로 적용해서 위험한 링크는 놓치지 않되,
+    위험하지 않으면 SMISHING/SUSPICIOUS/AUTHENTIC이 아니라 별도의 NOT_DISASTER로 분리한다.
+    """
     if contains_ip_url(detected_urls):
         return 1.0, "SMISHING"
-
-    # ====================================================
-    # Rule 2
-    # URL 위험도가 매우 높으면 즉시 스미싱
-    # ====================================================
 
     if url_risk_score >= 0.8:
         return 1.0, "SMISHING"
 
-    # ====================================================
-    # Rule 3
-    # URL 비중을 높인 가중합
-    # 기존 0.5 / 0.5
-    # 변경 0.7 / 0.3
-    # ====================================================
+    if is_disaster_message is False:
+        score = max(0.0, min(1.0, url_risk_score))
+        return round(score, 3), "NOT_DISASTER"
 
     score = (
         0.7 * url_risk_score
         + 0.3 * (1 - text_authenticity_score)
     )
-
-    score = max(
-        0.0,
-        min(1.0, score)
-    )
-
-    # ====================================================
-    # Threshold
-    # ====================================================
+    score = max(0.0, min(1.0, score))
 
     if score >= 0.7:
         verdict = "SMISHING"
-
     elif score >= 0.3:
         verdict = "SUSPICIOUS"
-
     else:
         verdict = "AUTHENTIC"
 
@@ -314,8 +306,15 @@ async def analyze_message(req: AnalyzeRequest):
     사용자가 문자를 붙여넣었을 때 호출되는 엔드포인트.
     raw_text 하나로 url_risk_score/text_authenticity_score까지 계산한 뒤,
     기존 create_message() 로직(compute_smishing_score + DB 저장)을 그대로 재사용한다.
+
+    process_message()는 pandas 필터링/RF 모델 추론뿐 아니라 공식 API 호출(최대 3회 재시도,
+    합쳐서 수십 초까지 걸릴 수 있음)까지 포함한 무거운 동기(blocking) 작업이라,
+    asyncio.to_thread로 별도 스레드에서 돌려야 한다. 여기서 await 없이 직접 호출하면
+    그 시간 동안 이 프로세스(uvicorn 워커 1개)의 이벤트루프 전체가 멈춰서,
+    다른 사용자의 모든 요청(/messages, /events, /health 포함)이 같이 막힌다.
     """
-    scores = process_message(
+    scores = await asyncio.to_thread(
+        process_message,
         raw_text=req.raw_text,
         sms_date=datetime.now().date().isoformat(),
         official_service_key=os.environ.get("SAFETYDATA_SERVICE_KEY"),
@@ -337,11 +336,12 @@ async def analyze_message(req: AnalyzeRequest):
 @app.post("/messages", response_model=MessageOut)
 async def create_message(body: MessageScoreIn):
     """수신 문자 1건 + 컴포넌트 스코어를 받아 최종 smishing_score/verdict를 계산해 저장한다."""
-  smishing_score, verdict = compute_smishing_score(
-    body.url_risk_score,
-    body.text_authenticity_score,
-    body.detected_urls
-)
+    smishing_score, verdict = compute_smishing_score(
+        body.url_risk_score,
+        body.text_authenticity_score,
+        body.detected_urls,
+        body.is_disaster_message,
+    )
 
     received_at = body.received_at.replace(tzinfo=None) if body.received_at.tzinfo else body.received_at
 
@@ -465,6 +465,34 @@ async def delete_message(message_id: int):
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="해당 message_id를 찾을 수 없습니다.")
     return Response(status_code=204)
+
+
+class BulkDeleteRequest(BaseModel):
+    message_ids: list[int] = Field(..., min_length=1, description="삭제할 message_id 목록")
+
+
+@app.post("/messages/bulk-delete")
+async def bulk_delete_messages(body: BulkDeleteRequest):
+    """선택한 여러 건을 한 번에 삭제한다."""
+    async with app.state.pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM incoming_messages WHERE message_id = ANY($1::int[])",
+            body.message_ids,
+        )
+    deleted_count = int(result.split(" ")[-1]) if result.startswith("DELETE") else 0
+    return {"deleted_count": deleted_count}
+
+
+@app.delete("/messages")
+async def delete_all_messages(device_id: Optional[str] = Query(None, description="지정하면 이 단말 것만 전체삭제")):
+    """탐지 이력 전체 삭제. device_id를 주면 해당 단말 것만 지운다."""
+    async with app.state.pool.acquire() as conn:
+        if device_id:
+            result = await conn.execute("DELETE FROM incoming_messages WHERE device_id = $1", device_id)
+        else:
+            result = await conn.execute("DELETE FROM incoming_messages")
+    deleted_count = int(result.split(" ")[-1]) if result.startswith("DELETE") else 0
+    return {"deleted_count": deleted_count}
 
 
 @app.patch("/messages/{message_id}/report", status_code=204)
