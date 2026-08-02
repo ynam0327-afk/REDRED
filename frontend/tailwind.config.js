@@ -8,6 +8,7 @@ export default {
         danger: { bg: "#FCEBEB", text: "#A32D2D", DEFAULT: "#E24B4A" },
         safe: { bg: "#E1FAF0", text: "#08795D", DEFAULT: "#10B981" },
         neutral: { bg: "#FAEEDA", text: "#854F0B", DEFAULT: "#F5A623" },
+        notice: { bg: "#EEF0F3", text: "#4B5563", DEFAULT: "#9CA3AF" },
         disaster: { bg: "#FFEDD5", text: "#9A3412", DEFAULT: "#F97316" },
         ink: "#0F1115",
         muted: "#9295A0",
