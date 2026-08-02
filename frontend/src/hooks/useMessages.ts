@@ -25,15 +25,5 @@ export function useMessages() {
       cancelled = true;
     };
   }, []);
-  // 로컬에서 임시로 추가/신고/삭제하는 기능은 그대로 유지 (POST 연동 전까지)
-  const addMessage = (newMessage: Message) => {
-    setMessages((prev) => [newMessage, ...prev]);
-  };
-  const reportMessage = (id: string) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, reported: true } : m)));
-  };
-  const deleteMessage = (id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-  };
-  return { messages, loading, error, addMessage, reportMessage, deleteMessage };
+  return { messages, loading, error };
 }
