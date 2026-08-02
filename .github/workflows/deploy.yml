@@ -12,19 +12,22 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
 
+      # SSH 키 설정
       - name: Set up SSH Key
         run: |
           echo "${{ secrets.EC2_SSH_KEY }}" > mocac.pem
           chmod 600 mocac.pem
 
-      - name: Transfer ML files
+      # ML 코드 전송
+      - name: Transfer ML files to EC2
         run: |
           scp -o StrictHostKeyChecking=no \
           -i mocac.pem \
           -r ml/* \
           ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/REDRED-main/ml/
 
-      - name: Restart backend
+      # notification-service 재시작
+      - name: Restart backend on EC2
         run: |
           ssh -o StrictHostKeyChecking=no \
           -i mocac.pem \
