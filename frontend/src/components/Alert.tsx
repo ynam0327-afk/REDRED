@@ -1,10 +1,11 @@
-import { AlertTriangle, BadgeCheck, HelpCircle } from "lucide-react";
+import { AlertTriangle, BadgeCheck, HelpCircle, Ban } from "lucide-react";
 import type { Verdict } from "../types";
 
 const CONFIG: Record<Verdict, { chip: string; text: string; icon: React.ReactNode; label: string }> = {
   danger: { chip: "bg-danger-bg", text: "text-danger-text", icon: <AlertTriangle size={20} />, label: "위험 스미싱" },
   safe: { chip: "bg-safe-bg", text: "text-safe-text", icon: <BadgeCheck size={20} />, label: "공식 재난문자" },
   neutral: { chip: "bg-neutral-bg", text: "text-neutral-text", icon: <HelpCircle size={20} />, label: "일반 문자" },
+  not_disaster: { chip: "bg-notice-bg", text: "text-notice-text", icon: <Ban size={20} />, label: "재난 문자가 아닙니다" },
 };
 
 export default function Alert({ verdict }: { verdict: Verdict }) {

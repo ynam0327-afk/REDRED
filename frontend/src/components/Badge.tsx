@@ -4,12 +4,14 @@ const STYLES: Record<Verdict, string> = {
   danger: "bg-danger-bg text-danger-text",
   safe: "bg-safe-bg text-safe-text",
   neutral: "bg-neutral-bg text-neutral-text",
+  not_disaster: "bg-notice-bg text-notice-text",
 };
 
 const LABEL: Record<Verdict, string> = {
   danger: "위험",
   safe: "안전",
   neutral: "일반",
+  not_disaster: "재난 아님",
 };
 
 export default function Badge({ verdict }: { verdict: Verdict }) {
