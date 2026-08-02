@@ -1,10 +1,3 @@
-"""
-notification-service
-
-지금 단계 범위: normalized_events를 조회하는 API + 스미싱 판별 결과(incoming_messages)를
-받아 저장/조회하는 최소 API를 제공한다.
-FCM 발송 로직(사용자 위치 매칭, 큐 소비, 실제 push)은 다음 단계에서 추가한다.
-"""
 import os
 import sys
 
