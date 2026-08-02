@@ -19,6 +19,7 @@ from region_extractor import extract_region_from_text
 # ============================================================
 # URL 전처리
 # ============================================================
+
 def normalize_text_for_url(text: str) -> str:
     """
     스미싱 우회 패턴 정규화
@@ -52,16 +53,24 @@ def normalize_text_for_url(text: str) -> str:
 # ============================================================
 
 URL_PATTERN = re.compile(
-    r'(?:https?://)?'
-    r'(?:'
-        r'(?:\d{1,3}\.){3}\d{1,3}'
-        r'|'
-        r'(?:[a-zA-Z0-9]'
-        r'(?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+'
-        r'[a-zA-Z]{2,}'
-    r')'
-    r'(?:/[^\s]*)?',
-    re.IGNORECASE
+    r"""
+    (?:
+        https?://
+    )?
+    (?:
+        (?:\d{1,3}\.){3}\d{1,3}
+        |
+        (?:[a-zA-Z0-9]
+            (?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?
+            \.
+        )+
+        [a-zA-Z]{2,}
+    )
+    (?:
+        /[^\s\[\]()〈〉『』]*
+    )?
+    """,
+    re.VERBOSE | re.IGNORECASE,
 )
 
 
@@ -376,13 +385,23 @@ def process_message(
         official_score
     )
 
+    # 재난 관련 문구/형식이 전혀 없는 일반 문자면 disaster["score"]가 None으로 옴.
+    # DB 저장용으로는 중립값(0.5)을 채워 넣되, 실제 판정(verdict)은
+    # is_disaster_message 플래그를 보고 notification-service에서 별도 처리한다.
+    is_disaster_message = disaster.get("is_disaster_format", True)
+    text_authenticity_score = (
+        disaster["score"] if disaster["score"] is not None else 0.5
+    )
+
     return {
         "url_risk_score": round(
             float(url_risk_score),
             4
         ),
         "text_authenticity_score":
-            disaster["score"],
+            text_authenticity_score,
+        "is_disaster_message":
+            is_disaster_message,
         "detail": {
             "url_used": url,
             "domain": domain,

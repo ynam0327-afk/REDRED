@@ -27,8 +27,12 @@ def match_sms_to_call119(sms_row: pd.Series, call119_df: pd.DataFrame) -> dict:
     if not sigungu or sigungu == "전체":
         return None
 
+    # dclr_ymd는 smishing_pipeline.py의 로딩 시점에 이미 문자열로 캐스팅해뒀으므로
+    # (_df["dclr_ymd"] = _df["dclr_ymd"].astype(str)) 여기서 매 요청마다 다시
+    # .astype(str)을 반복할 필요가 없다. 수십만 행짜리 컬럼을 요청마다 재캐스팅하는 건
+    # 순수 낭비라 제거함 - 응답 속도에 실질적인 영향이 있던 부분.
     base = call119_df[
-        (call119_df["dclr_ymd"].astype(str) == ymd)
+        (call119_df["dclr_ymd"] == ymd)
         & (call119_df["sido"] == sido)
         & (call119_df["sigungu"] == sigungu)
     ]
