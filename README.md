@@ -6,7 +6,6 @@
 
 ```json
 
-{
   REDRED-main/
 ├── backend/
 │   ├── collector-service/    # 공식 데이터 4종을 주기적으로 폴링해서 Redis Stream에 넣음
@@ -17,6 +16,6 @@
 ├── ml/                        # 스미싱 판별 로직 (URL 위험도 + 재난정보 신뢰도)
 ├── frontend/                  # React(Vite) + TypeScript + Tailwind 앱
 └── domain/, data.ipynb        # 초기 데이터 탐색용 노트북 (운영 파이프라인과는 무관)
-}
+
 ```
 ---
