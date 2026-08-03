@@ -6,6 +6,7 @@ import { AlertTriangle, HelpCircle, BadgeCheck, ShieldX, ShieldCheck, Ban, Trash
 import Badge from "../components/Badge";
 import AnalyzeInput from "../components/AnalyzeInput";
 import type { Verdict } from "../types";
+import PhotoAnalyzeInput from "../components/PhotoAnalyzeInput";
 
 const ICON_CHIP: Record<Verdict, { bg: string; text: string; icon: React.ReactNode }> = {
   danger: { bg: "bg-danger-bg", text: "text-danger-text", icon: <AlertTriangle size={18} /> },
@@ -116,6 +117,7 @@ export default function HomePage() {
   return (
     <div>
       <AnalyzeInput onAnalyze={handleAnalyze} pending={analyzing} />
+      <PhotoAnalyzeInput onAnalyze={handleAnalyze} pending={analyzing} />
 
       {analyzeError && (
         <div className="bg-danger-bg text-danger-text rounded-2xl p-3.5 mb-4 text-sm text-center">
